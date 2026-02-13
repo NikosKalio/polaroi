@@ -56,6 +56,28 @@ export const getPhotos = query({
   },
 });
 
+export const movePhoto = mutation({
+  args: {
+    id: v.id("photos"),
+    posX: v.number(),
+    posY: v.number(),
+  },
+  handler: async (ctx, args) => {
+    await ctx.db.patch(args.id, { posX: args.posX, posY: args.posY });
+  },
+});
+
+export const deletePhoto = mutation({
+  args: { id: v.id("photos") },
+  handler: async (ctx, args) => {
+    const photo = await ctx.db.get(args.id);
+    if (photo) {
+      await ctx.storage.delete(photo.storageId);
+      await ctx.db.delete(args.id);
+    }
+  },
+});
+
 export const getPhotoCount = query({
   args: { userName: v.string() },
   handler: async (ctx, args) => {

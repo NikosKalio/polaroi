@@ -3,7 +3,7 @@ import { useNavigate } from "react-router-dom";
 import { useMutation, useQuery } from "convex/react";
 import { api } from "../../convex/_generated/api";
 import type { Id } from "../../convex/_generated/dataModel";
-import { startCamera, stopCamera, captureFrame, triggerHaptic } from "../lib/camera";
+import { startCamera, stopCamera, captureFrame, triggerHaptic, flashTorch } from "../lib/camera";
 import PhotoPreview from "../components/PhotoPreview";
 import Header from "../components/Header";
 
@@ -23,6 +23,7 @@ export default function Camera() {
   const [saving, setSaving] = useState(false);
   const [flash, setFlash] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [showSponsor, setShowSponsor] = useState(false);
 
   const generateUploadUrl = useMutation(api.photos.generateUploadUrl);
   const savePhoto = useMutation(api.photos.savePhoto);
@@ -52,7 +53,11 @@ export default function Camera() {
     if (!videoRef.current || remaining === 0) return;
     triggerHaptic();
     setFlash(true);
-    setTimeout(() => setFlash(false), 250);
+    setTimeout(() => setFlash(false), 300);
+    // Fire torch on back camera
+    if (facingMode === "environment" && streamRef.current) {
+      flashTorch(streamRef.current, 300);
+    }
 
     try {
       const blob = await captureFrame(videoRef.current);
@@ -78,6 +83,12 @@ export default function Camera() {
       await savePhoto({ userName, storageId });
       URL.revokeObjectURL(preview.url);
       setPreview(null);
+      const newCount = (count ?? 0) + 1;
+      if (newCount % 5 === 0) {
+        setShowSponsor(true);
+      } else {
+        navigate("/canvas");
+      }
     } catch (err) {
       alert(err instanceof Error ? err.message : "Failed to save photo");
     } finally {
@@ -122,7 +133,7 @@ export default function Camera() {
         )}
 
         {flash && (
-          <div className="absolute inset-0 bg-cream animate-flash pointer-events-none" />
+          <div className="absolute inset-0 bg-white animate-flash pointer-events-none" style={{ zIndex: 50 }} />
         )}
       </div>
 
@@ -193,6 +204,43 @@ export default function Camera() {
           onRetake={handleRetake}
           saving={saving}
         />
+      )}
+
+      {showSponsor && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-ink/70 backdrop-blur-sm">
+          <div className="bg-cream rounded-2xl p-6 mx-6 max-w-sm text-center shadow-lg">
+            <p
+              className="text-ink text-lg mb-1"
+              style={{ fontFamily: "var(--font-hand)", fontWeight: 600 }}
+            >
+              Having fun?
+            </p>
+            <p
+              className="text-stone text-sm mb-5"
+              style={{ fontFamily: "var(--font-sans)", fontWeight: 400 }}
+            >
+              Become a J floor sponsor!
+            </p>
+            <div className="flex flex-col gap-2">
+              <a
+                href="https://twint.raisenow.io/?handshakeId=cf07a360d24ad50291ea1cb5c0b98658&returnAppPackage=com.ubs.Paymit.android&lng=en"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="block w-full py-2.5 rounded-xl text-cream text-sm active:scale-95 transition-transform"
+                style={{ background: "var(--color-ink)", fontFamily: "var(--font-sans)", fontWeight: 500, letterSpacing: "0.05em" }}
+              >
+                Sponsor
+              </a>
+              <button
+                onClick={() => { setShowSponsor(false); navigate("/canvas"); }}
+                className="w-full py-2.5 rounded-xl text-stone text-sm active:scale-95 transition-transform"
+                style={{ fontFamily: "var(--font-sans)", fontWeight: 400 }}
+              >
+                Maybe later
+              </button>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );

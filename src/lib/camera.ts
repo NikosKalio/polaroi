@@ -62,3 +62,18 @@ export function triggerHaptic() {
     navigator.vibrate(50);
   }
 }
+
+export async function flashTorch(stream: MediaStream, durationMs = 300) {
+  const track = stream.getVideoTracks()[0];
+  if (!track) return;
+  try {
+    const capabilities = track.getCapabilities?.() as Record<string, unknown> | undefined;
+    if (!capabilities?.torch) return;
+    await track.applyConstraints({ advanced: [{ torch: true } as MediaTrackConstraintSet] });
+    setTimeout(async () => {
+      try {
+        await track.applyConstraints({ advanced: [{ torch: false } as MediaTrackConstraintSet] });
+      } catch {}
+    }, durationMs);
+  } catch {}
+}

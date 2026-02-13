@@ -1,7 +1,8 @@
 import { useRef, useState, useEffect, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
-import { useQuery } from "convex/react";
+import { useQuery, useMutation } from "convex/react";
 import { api } from "../../convex/_generated/api";
+import type { Id } from "../../convex/_generated/dataModel";
 import Polaroid from "../components/Polaroid";
 import Header from "../components/Header";
 
@@ -14,13 +15,79 @@ export default function Canvas() {
   }, [userName, navigate]);
 
   const photos = useQuery(api.photos.getPhotos);
+  const movePhoto = useMutation(api.photos.movePhoto);
 
-  const containerRef = useRef<HTMLDivElement>(null);
   const scrollAreaRef = useRef<HTMLDivElement>(null);
   const [transform, setTransform] = useState({ x: 0, y: 0, scale: 1 });
   const dragRef = useRef({ dragging: false, startX: 0, startY: 0 });
+  const pinchRef = useRef({ active: false, startDist: 0, startScale: 1 });
+  const photoDragRef = useRef<{ id: Id<"photos">; startPosX: number; startPosY: number; startClientX: number; startClientY: number } | null>(null);
+  const fittedRef = useRef(false);
 
+  // Auto-fit: compute initial scale to show all photos
+  useEffect(() => {
+    if (!photos?.length || fittedRef.current || !scrollAreaRef.current) return;
+    const polaroidW = 180;
+    const polaroidH = 240;
+    // Find bounding box of all photo positions (they use posX/posY as %)
+    const xs = photos.filter((p) => p.url).map((p) => p.posX);
+    const ys = photos.filter((p) => p.url).map((p) => p.posY);
+    if (!xs.length) return;
+
+    const minX = Math.min(...xs);
+    const maxX = Math.max(...xs);
+    const minY = Math.min(...ys);
+    const maxY = Math.max(...ys);
+
+    // Content size in px (% of 100vh/vw canvas + polaroid size)
+    const el = scrollAreaRef.current;
+    const viewW = el.clientWidth;
+    const viewH = el.clientHeight;
+    const canvasW = viewW;
+    const canvasH = viewH + polaroidH; // minHeight: 100vh
+
+    const contentW = ((maxX - minX) / 100) * canvasW + polaroidW;
+    const contentH = ((maxY - minY) / 100) * canvasH + polaroidH;
+
+    const padding = 20;
+    const scaleX = (viewW - padding * 2) / contentW;
+    const scaleY = (viewH - padding * 2) / contentH;
+    const fitScale = Math.min(scaleX, scaleY, 1);
+
+    // Center the content
+    const centerX = ((minX + maxX) / 2 / 100) * canvasW;
+    const centerY = ((minY + maxY) / 2 / 100) * canvasH;
+    const offsetX = viewW / 2 - centerX * fitScale;
+    const offsetY = viewH / 2 - centerY * fitScale;
+
+    setTransform({ x: offsetX, y: offsetY, scale: fitScale });
+    fittedRef.current = true;
+  }, [photos]);
+
+  // Pointer handlers: photo drag vs canvas pan
   function handlePointerDown(e: React.PointerEvent) {
+    if (pinchRef.current.active) return;
+
+    // Check if we clicked on a photo
+    const photoEl = (e.target as HTMLElement).closest("[data-photo-id]") as HTMLElement | null;
+    if (photoEl) {
+      const id = photoEl.dataset.photoId as Id<"photos">;
+      const photo = photos?.find((p) => p._id === id);
+      if (photo) {
+        photoDragRef.current = {
+          id,
+          startPosX: photo.posX,
+          startPosY: photo.posY,
+          startClientX: e.clientX,
+          startClientY: e.clientY,
+        };
+        (e.target as HTMLElement).setPointerCapture?.(e.pointerId);
+        e.stopPropagation();
+        return;
+      }
+    }
+
+    // Canvas pan
     dragRef.current = {
       dragging: true,
       startX: e.clientX - transform.x,
@@ -30,7 +97,27 @@ export default function Canvas() {
   }
 
   function handlePointerMove(e: React.PointerEvent) {
-    if (!dragRef.current.dragging) return;
+    // Photo drag
+    if (photoDragRef.current) {
+      const el = scrollAreaRef.current;
+      if (!el) return;
+      const canvasW = el.clientWidth;
+      const canvasH = el.clientHeight + 240; // matches minHeight calc
+      const deltaX = (e.clientX - photoDragRef.current.startClientX) / transform.scale;
+      const deltaY = (e.clientY - photoDragRef.current.startClientY) / transform.scale;
+      const newPosX = photoDragRef.current.startPosX + (deltaX / canvasW) * 100;
+      const newPosY = photoDragRef.current.startPosY + (deltaY / canvasH) * 100;
+      // Optimistic local update via direct DOM for smoothness
+      const photoEl = document.querySelector(`[data-photo-id="${photoDragRef.current.id}"]`) as HTMLElement;
+      if (photoEl) {
+        photoEl.style.left = `${newPosX}%`;
+        photoEl.style.top = `${newPosY}%`;
+      }
+      return;
+    }
+
+    // Canvas pan
+    if (!dragRef.current.dragging || pinchRef.current.active) return;
     setTransform((prev) => ({
       ...prev,
       x: e.clientX - dragRef.current.startX,
@@ -38,24 +125,96 @@ export default function Canvas() {
     }));
   }
 
-  function handlePointerUp() {
+  function handlePointerUp(e: React.PointerEvent) {
+    // Commit photo move to DB
+    if (photoDragRef.current) {
+      const el = scrollAreaRef.current;
+      if (el) {
+        const canvasW = el.clientWidth;
+        const canvasH = el.clientHeight + 240;
+        const deltaX = (e.clientX - photoDragRef.current.startClientX) / transform.scale;
+        const deltaY = (e.clientY - photoDragRef.current.startClientY) / transform.scale;
+        const newPosX = photoDragRef.current.startPosX + (deltaX / canvasW) * 100;
+        const newPosY = photoDragRef.current.startPosY + (deltaY / canvasH) * 100;
+        movePhoto({ id: photoDragRef.current.id, posX: newPosX, posY: newPosY });
+      }
+      photoDragRef.current = null;
+      return;
+    }
     dragRef.current.dragging = false;
   }
 
+  // Pinch-to-zoom (touch) — anchored to midpoint between fingers
+  const handleTouchStart = useCallback((e: TouchEvent) => {
+    if (e.touches.length === 2) {
+      e.preventDefault();
+      const dx = e.touches[0].clientX - e.touches[1].clientX;
+      const dy = e.touches[0].clientY - e.touches[1].clientY;
+      pinchRef.current = {
+        active: true,
+        startDist: Math.sqrt(dx * dx + dy * dy),
+        startScale: transform.scale,
+      };
+      dragRef.current.dragging = false;
+    }
+  }, [transform.scale]);
+
+  const handleTouchMove = useCallback((e: TouchEvent) => {
+    if (e.touches.length === 2 && pinchRef.current.active) {
+      e.preventDefault();
+      const dx = e.touches[0].clientX - e.touches[1].clientX;
+      const dy = e.touches[0].clientY - e.touches[1].clientY;
+      const dist = Math.sqrt(dx * dx + dy * dy);
+      const newScale = Math.min(3, Math.max(0.15, pinchRef.current.startScale * (dist / pinchRef.current.startDist)));
+
+      // Anchor zoom to midpoint between fingers
+      const midX = (e.touches[0].clientX + e.touches[1].clientX) / 2;
+      const midY = (e.touches[0].clientY + e.touches[1].clientY) / 2;
+
+      setTransform((prev) => {
+        const ratio = newScale / prev.scale;
+        return {
+          x: midX - (midX - prev.x) * ratio,
+          y: midY - (midY - prev.y) * ratio,
+          scale: newScale,
+        };
+      });
+    }
+  }, []);
+
+  const handleTouchEnd = useCallback(() => {
+    pinchRef.current.active = false;
+  }, []);
+
+  // Mouse wheel zoom — anchored to cursor position
   const handleWheel = useCallback((e: WheelEvent) => {
     e.preventDefault();
+    const newScale = Math.min(3, Math.max(0.15, transform.scale - e.deltaY * 0.001));
+    const ratio = newScale / transform.scale;
+    const mouseX = e.clientX;
+    const mouseY = e.clientY;
+
     setTransform((prev) => ({
-      ...prev,
-      scale: Math.min(3, Math.max(0.3, prev.scale - e.deltaY * 0.001)),
+      x: mouseX - (mouseX - prev.x) * ratio,
+      y: mouseY - (mouseY - prev.y) * ratio,
+      scale: newScale,
     }));
-  }, []);
+  }, [transform.scale]);
 
   useEffect(() => {
     const el = scrollAreaRef.current;
     if (!el) return;
     el.addEventListener("wheel", handleWheel, { passive: false });
-    return () => el.removeEventListener("wheel", handleWheel);
-  }, [handleWheel]);
+    el.addEventListener("touchstart", handleTouchStart, { passive: false });
+    el.addEventListener("touchmove", handleTouchMove, { passive: false });
+    el.addEventListener("touchend", handleTouchEnd);
+    return () => {
+      el.removeEventListener("wheel", handleWheel);
+      el.removeEventListener("touchstart", handleTouchStart);
+      el.removeEventListener("touchmove", handleTouchMove);
+      el.removeEventListener("touchend", handleTouchEnd);
+    };
+  }, [handleWheel, handleTouchStart, handleTouchMove, handleTouchEnd]);
 
   if (!userName) return null;
 
@@ -71,7 +230,7 @@ export default function Canvas() {
         onPointerUp={handlePointerUp}
       >
         <div
-          ref={containerRef}
+
           className="relative w-full h-full"
           style={{
             transform: `translate(${transform.x}px, ${transform.y}px) scale(${transform.scale})`,
@@ -115,7 +274,8 @@ export default function Canvas() {
             photo.url ? (
               <div
                 key={photo._id}
-                className="absolute animate-pop-in"
+                data-photo-id={photo._id}
+                className="absolute animate-pop-in cursor-grab active:cursor-grabbing"
                 style={{
                   left: `${photo.posX}%`,
                   top: `${photo.posY}%`,
