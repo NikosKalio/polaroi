@@ -8,6 +8,7 @@
  * @module
  */
 
+import type * as canvases from "../canvases.js";
 import type * as photos from "../photos.js";
 
 import type {
@@ -17,6 +18,7 @@ import type {
 } from "convex/server";
 
 declare const fullApi: ApiFromModules<{
+  canvases: typeof canvases;
   photos: typeof photos;
 }>;
 

@@ -1,5 +1,5 @@
 import { useState, useRef, useCallback, useEffect } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useParams } from "react-router-dom";
 import { useMutation, useQuery } from "convex/react";
 import { api } from "../../convex/_generated/api";
 import type { Id } from "../../convex/_generated/dataModel";
@@ -9,11 +9,22 @@ import Header from "../components/Header";
 
 export default function Camera() {
   const navigate = useNavigate();
-  const userName = localStorage.getItem("polaroid-name");
+  const { slug } = useParams<{ slug: string }>();
+  const canvas = useQuery(api.canvases.getCanvasBySlug, slug ? { slug } : "skip");
+
+  const displayName = slug ? localStorage.getItem(`polaroid-name-${slug}`) : null;
 
   useEffect(() => {
-    if (!userName) navigate("/", { replace: true });
-  }, [userName, navigate]);
+    if (canvas === null) {
+      navigate("/", { replace: true });
+      return;
+    }
+    if (canvas && !displayName) {
+      // If owner is viewing their own canvas, use their auth name
+      // Otherwise redirect to join page
+      navigate(`/join/${canvas.inviteCode}`, { replace: true });
+    }
+  }, [canvas, displayName, navigate]);
 
   const videoRef = useRef<HTMLVideoElement>(null);
   const streamRef = useRef<MediaStream | null>(null);
@@ -23,11 +34,13 @@ export default function Camera() {
   const [saving, setSaving] = useState(false);
   const [flash, setFlash] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [showSponsor, setShowSponsor] = useState(false);
 
   const generateUploadUrl = useMutation(api.photos.generateUploadUrl);
   const savePhoto = useMutation(api.photos.savePhoto);
-  const count = useQuery(api.photos.getPhotoCount, userName ? { userName } : "skip");
+  const count = useQuery(
+    api.photos.getPhotoCount,
+    canvas && displayName ? { canvasId: canvas._id, displayName } : "skip"
+  );
 
   const remaining = count !== undefined ? 30 - count : null;
 
@@ -54,7 +67,6 @@ export default function Camera() {
     triggerHaptic();
     setFlash(true);
     setTimeout(() => setFlash(false), 300);
-    // Fire torch on back camera
     if (facingMode === "environment" && streamRef.current) {
       flashTorch(streamRef.current, 300);
     }
@@ -70,7 +82,7 @@ export default function Camera() {
   }
 
   async function handleSave() {
-    if (!preview || !userName) return;
+    if (!preview || !displayName || !canvas) return;
     setSaving(true);
     try {
       const uploadUrl = await generateUploadUrl();
@@ -80,15 +92,10 @@ export default function Camera() {
         body: preview.blob,
       });
       const { storageId } = (await result.json()) as { storageId: Id<"_storage"> };
-      await savePhoto({ userName, storageId });
+      await savePhoto({ canvasId: canvas._id, displayName, storageId });
       URL.revokeObjectURL(preview.url);
       setPreview(null);
-      const newCount = (count ?? 0) + 1;
-      if (newCount % 5 === 0) {
-        setShowSponsor(true);
-      } else {
-        navigate("/canvas");
-      }
+      navigate(`/c/${slug}/canvas`);
     } catch (err) {
       alert(err instanceof Error ? err.message : "Failed to save photo");
     } finally {
@@ -107,11 +114,11 @@ export default function Camera() {
     setFacingMode((prev) => (prev === "user" ? "environment" : "user"));
   }
 
-  if (!userName) return null;
+  if (!canvas || !displayName) return null;
 
   return (
     <div className="fixed inset-0 bg-ink flex flex-col">
-      <Header userName={userName} />
+      <Header displayName={displayName} canvasId={canvas._id} canvasName={canvas.name} />
 
       {/* Camera viewfinder */}
       <div className="absolute inset-0 top-[52px] bottom-[100px] z-0">
@@ -142,7 +149,7 @@ export default function Camera() {
         <div className="flex items-center justify-between px-10 py-5">
           {/* Gallery */}
           <button
-            onClick={() => navigate("/canvas")}
+            onClick={() => navigate(`/c/${slug}/canvas`)}
             className="w-10 h-10 flex items-center justify-center"
           >
             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#F5F5F0" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round">
@@ -204,43 +211,6 @@ export default function Camera() {
           onRetake={handleRetake}
           saving={saving}
         />
-      )}
-
-      {showSponsor && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-ink/70 backdrop-blur-sm">
-          <div className="bg-cream rounded-2xl p-6 mx-6 max-w-sm text-center shadow-lg">
-            <p
-              className="text-ink text-lg mb-1"
-              style={{ fontFamily: "var(--font-hand)", fontWeight: 600 }}
-            >
-              Having fun?
-            </p>
-            <p
-              className="text-stone text-sm mb-5"
-              style={{ fontFamily: "var(--font-sans)", fontWeight: 400 }}
-            >
-              Become a J floor sponsor!
-            </p>
-            <div className="flex flex-col gap-2">
-              <a
-                href="https://twint.raisenow.io/?handshakeId=cf07a360d24ad50291ea1cb5c0b98658&returnAppPackage=com.ubs.Paymit.android&lng=en"
-                target="_blank"
-                rel="noopener noreferrer"
-                className="block w-full py-2.5 rounded-xl text-cream text-sm active:scale-95 transition-transform"
-                style={{ background: "var(--color-ink)", fontFamily: "var(--font-sans)", fontWeight: 500, letterSpacing: "0.05em" }}
-              >
-                Sponsor
-              </a>
-              <button
-                onClick={() => { setShowSponsor(false); navigate("/canvas"); }}
-                className="w-full py-2.5 rounded-xl text-stone text-sm active:scale-95 transition-transform"
-                style={{ fontFamily: "var(--font-sans)", fontWeight: 400 }}
-              >
-                Maybe later
-              </button>
-            </div>
-          </div>
-        </div>
       )}
     </div>
   );

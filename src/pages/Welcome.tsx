@@ -1,24 +1,28 @@
-import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
+import { useConvexAuth } from "convex/react";
+import { useEffect } from "react";
 
 export default function Welcome() {
-  const [name, setName] = useState("");
-  const [focused, setFocused] = useState(false);
   const navigate = useNavigate();
+  const { isAuthenticated, isLoading } = useConvexAuth();
 
   useEffect(() => {
-    const saved = localStorage.getItem("polaroid-name");
-    if (saved) {
-      navigate("/camera", { replace: true });
+    if (!isLoading && isAuthenticated) {
+      navigate("/dashboard", { replace: true });
     }
-  }, [navigate]);
+  }, [isAuthenticated, isLoading, navigate]);
 
-  function handleSubmit(e: React.FormEvent) {
-    e.preventDefault();
-    const trimmed = name.trim();
-    if (!trimmed) return;
-    localStorage.setItem("polaroid-name", trimmed);
-    navigate("/camera");
+  if (isLoading) {
+    return (
+      <div className="min-h-dvh bg-cream flex items-center justify-center">
+        <p
+          className="text-stone text-sm"
+          style={{ fontFamily: "var(--font-sans)", fontWeight: 300, letterSpacing: "0.1em" }}
+        >
+          Loading...
+        </p>
+      </div>
+    );
   }
 
   return (
@@ -46,62 +50,47 @@ export default function Welcome() {
         >
           Polaroid Party
         </h1>
-        <p className="text-stone text-base max-w-[240px] mx-auto leading-relaxed">
-          Capture moments together.
-          <br />
-          Every photo, shared instantly.
+        <p className="text-stone text-base max-w-[260px] mx-auto leading-relaxed">
+          Create a canvas, invite your guests, and capture moments together.
         </p>
       </div>
 
-      <form
-        onSubmit={handleSubmit}
-        className="w-full max-w-[280px] mt-12 animate-slide-up-delayed"
-      >
-        <div className="relative">
-          <input
-            type="text"
-            value={name}
-            onChange={(e) => setName(e.target.value)}
-            onFocus={() => setFocused(true)}
-            onBlur={() => setFocused(false)}
-            placeholder="Your name"
-            maxLength={30}
-            autoFocus
-            className="w-full px-0 py-3 bg-transparent text-ink text-center text-lg outline-none placeholder-stone-light transition-colors"
-            style={{ fontFamily: "var(--font-sans)", fontWeight: 300 }}
-          />
-          <div
-            className="absolute bottom-0 left-1/2 h-px bg-stone-light transition-all duration-500"
-            style={{
-              width: focused || name ? "100%" : "40px",
-              transform: "translateX(-50%)",
-              backgroundColor: focused ? "var(--color-ink)" : undefined,
-            }}
-          />
-        </div>
-
+      <div className="w-full max-w-[280px] mt-12 animate-slide-up-delayed flex flex-col gap-3">
         <button
-          type="submit"
-          disabled={!name.trim()}
-          className="w-full mt-8 py-3.5 text-sm tracking-[0.15em] uppercase transition-all duration-300 disabled:opacity-0 disabled:translate-y-1"
+          onClick={() => navigate("/sign-in")}
+          className="w-full py-3.5 text-sm tracking-[0.15em] uppercase transition-all active:scale-95"
           style={{
             fontFamily: "var(--font-sans)",
             fontWeight: 500,
             background: "var(--color-ink)",
             color: "var(--color-cream)",
             border: "none",
-            cursor: name.trim() ? "pointer" : "default",
+            cursor: "pointer",
           }}
         >
-          Enter
+          Sign In
         </button>
-      </form>
+        <button
+          onClick={() => navigate("/sign-up")}
+          className="w-full py-3.5 text-sm tracking-[0.15em] uppercase transition-all active:scale-95"
+          style={{
+            fontFamily: "var(--font-sans)",
+            fontWeight: 400,
+            background: "transparent",
+            color: "var(--color-stone)",
+            border: "1px solid var(--color-stone-faint)",
+            cursor: "pointer",
+          }}
+        >
+          Create Account
+        </button>
+      </div>
 
       <p
         className="mt-auto mb-8 text-stone-light text-xs tracking-wide animate-slide-up-delayed"
         style={{ fontFamily: "var(--font-sans)", fontWeight: 300 }}
       >
-        30 photos per guest
+        Guests join via invite link — no sign-up needed
       </p>
     </div>
   );

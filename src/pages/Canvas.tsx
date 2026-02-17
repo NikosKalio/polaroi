@@ -1,21 +1,36 @@
 import { useRef, useState, useEffect, useCallback } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useParams } from "react-router-dom";
 import { useQuery, useMutation } from "convex/react";
 import { api } from "../../convex/_generated/api";
 import type { Id } from "../../convex/_generated/dataModel";
 import Polaroid from "../components/Polaroid";
 import Header from "../components/Header";
+import ShareModal from "../components/ShareModal";
 
 export default function Canvas() {
   const navigate = useNavigate();
-  const userName = localStorage.getItem("polaroid-name");
+  const { slug } = useParams<{ slug: string }>();
+  const canvas = useQuery(api.canvases.getCanvasBySlug, slug ? { slug } : "skip");
+
+  const displayName = slug ? localStorage.getItem(`polaroid-name-${slug}`) : null;
 
   useEffect(() => {
-    if (!userName) navigate("/", { replace: true });
-  }, [userName, navigate]);
+    if (canvas === null) {
+      navigate("/", { replace: true });
+      return;
+    }
+    if (canvas && !displayName) {
+      navigate(`/join/${canvas.inviteCode}`, { replace: true });
+    }
+  }, [canvas, displayName, navigate]);
 
-  const photos = useQuery(api.photos.getPhotos);
+  const photos = useQuery(
+    api.photos.getPhotos,
+    canvas ? { canvasId: canvas._id } : "skip"
+  );
   const movePhoto = useMutation(api.photos.movePhoto);
+
+  const [showShare, setShowShare] = useState(false);
 
   const scrollAreaRef = useRef<HTMLDivElement>(null);
   const [transform, setTransform] = useState({ x: 0, y: 0, scale: 1 });
@@ -29,7 +44,6 @@ export default function Canvas() {
     if (!photos?.length || fittedRef.current || !scrollAreaRef.current) return;
     const polaroidW = 180;
     const polaroidH = 240;
-    // Find bounding box of all photo positions (they use posX/posY as %)
     const xs = photos.filter((p) => p.url).map((p) => p.posX);
     const ys = photos.filter((p) => p.url).map((p) => p.posY);
     if (!xs.length) return;
@@ -39,12 +53,11 @@ export default function Canvas() {
     const minY = Math.min(...ys);
     const maxY = Math.max(...ys);
 
-    // Content size in px (% of 100vh/vw canvas + polaroid size)
     const el = scrollAreaRef.current;
     const viewW = el.clientWidth;
     const viewH = el.clientHeight;
     const canvasW = viewW;
-    const canvasH = viewH + polaroidH; // minHeight: 100vh
+    const canvasH = viewH + polaroidH;
 
     const contentW = ((maxX - minX) / 100) * canvasW + polaroidW;
     const contentH = ((maxY - minY) / 100) * canvasH + polaroidH;
@@ -54,7 +67,6 @@ export default function Canvas() {
     const scaleY = (viewH - padding * 2) / contentH;
     const fitScale = Math.min(scaleX, scaleY, 1);
 
-    // Center the content
     const centerX = ((minX + maxX) / 2 / 100) * canvasW;
     const centerY = ((minY + maxY) / 2 / 100) * canvasH;
     const offsetX = viewW / 2 - centerX * fitScale;
@@ -64,11 +76,9 @@ export default function Canvas() {
     fittedRef.current = true;
   }, [photos]);
 
-  // Pointer handlers: photo drag vs canvas pan
   function handlePointerDown(e: React.PointerEvent) {
     if (pinchRef.current.active) return;
 
-    // Check if we clicked on a photo
     const photoEl = (e.target as HTMLElement).closest("[data-photo-id]") as HTMLElement | null;
     if (photoEl) {
       const id = photoEl.dataset.photoId as Id<"photos">;
@@ -87,7 +97,6 @@ export default function Canvas() {
       }
     }
 
-    // Canvas pan
     dragRef.current = {
       dragging: true,
       startX: e.clientX - transform.x,
@@ -97,17 +106,15 @@ export default function Canvas() {
   }
 
   function handlePointerMove(e: React.PointerEvent) {
-    // Photo drag
     if (photoDragRef.current) {
       const el = scrollAreaRef.current;
       if (!el) return;
       const canvasW = el.clientWidth;
-      const canvasH = el.clientHeight + 240; // matches minHeight calc
+      const canvasH = el.clientHeight + 240;
       const deltaX = (e.clientX - photoDragRef.current.startClientX) / transform.scale;
       const deltaY = (e.clientY - photoDragRef.current.startClientY) / transform.scale;
       const newPosX = photoDragRef.current.startPosX + (deltaX / canvasW) * 100;
       const newPosY = photoDragRef.current.startPosY + (deltaY / canvasH) * 100;
-      // Optimistic local update via direct DOM for smoothness
       const photoEl = document.querySelector(`[data-photo-id="${photoDragRef.current.id}"]`) as HTMLElement;
       if (photoEl) {
         photoEl.style.left = `${newPosX}%`;
@@ -116,7 +123,6 @@ export default function Canvas() {
       return;
     }
 
-    // Canvas pan
     if (!dragRef.current.dragging || pinchRef.current.active) return;
     setTransform((prev) => ({
       ...prev,
@@ -126,7 +132,6 @@ export default function Canvas() {
   }
 
   function handlePointerUp(e: React.PointerEvent) {
-    // Commit photo move to DB
     if (photoDragRef.current) {
       const el = scrollAreaRef.current;
       if (el) {
@@ -144,7 +149,6 @@ export default function Canvas() {
     dragRef.current.dragging = false;
   }
 
-  // Pinch-to-zoom (touch) — anchored to midpoint between fingers
   const handleTouchStart = useCallback((e: TouchEvent) => {
     if (e.touches.length === 2) {
       e.preventDefault();
@@ -167,7 +171,6 @@ export default function Canvas() {
       const dist = Math.sqrt(dx * dx + dy * dy);
       const newScale = Math.min(3, Math.max(0.15, pinchRef.current.startScale * (dist / pinchRef.current.startDist)));
 
-      // Anchor zoom to midpoint between fingers
       const midX = (e.touches[0].clientX + e.touches[1].clientX) / 2;
       const midY = (e.touches[0].clientY + e.touches[1].clientY) / 2;
 
@@ -186,7 +189,6 @@ export default function Canvas() {
     pinchRef.current.active = false;
   }, []);
 
-  // Mouse wheel zoom — anchored to cursor position
   const handleWheel = useCallback((e: WheelEvent) => {
     e.preventDefault();
     const newScale = Math.min(3, Math.max(0.15, transform.scale - e.deltaY * 0.001));
@@ -216,11 +218,11 @@ export default function Canvas() {
     };
   }, [handleWheel, handleTouchStart, handleTouchMove, handleTouchEnd]);
 
-  if (!userName) return null;
+  if (!canvas || !displayName) return null;
 
   return (
     <div className="min-h-dvh bg-warm-white bg-grain flex flex-col">
-      <Header userName={userName} />
+      <Header displayName={displayName} canvasId={canvas._id} canvasName={canvas.name} />
 
       <div
         ref={scrollAreaRef}
@@ -230,7 +232,6 @@ export default function Canvas() {
         onPointerUp={handlePointerUp}
       >
         <div
-
           className="relative w-full h-full"
           style={{
             transform: `translate(${transform.x}px, ${transform.y}px) scale(${transform.scale})`,
@@ -284,7 +285,7 @@ export default function Canvas() {
               >
                 <Polaroid
                   url={photo.url}
-                  userName={photo.userName}
+                  userName={photo.displayName}
                   timestamp={photo.timestamp}
                   rotation={photo.rotation}
                 />
@@ -298,7 +299,7 @@ export default function Canvas() {
       <div className="fixed bottom-0 left-0 right-0 pb-safe z-10" style={{ background: "var(--color-ink)" }}>
         <div className="flex items-center justify-around py-3">
           <button
-            onClick={() => navigate("/camera")}
+            onClick={() => navigate(`/c/${slug}/camera`)}
             className="flex flex-col items-center gap-1.5 px-6 py-1 relative active:scale-90 transition-transform"
           >
             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#F5F5F0" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round">
@@ -327,8 +328,33 @@ export default function Canvas() {
             </span>
             <div className="absolute -bottom-1 left-1/2 -translate-x-1/2 w-5 h-[2px] rounded-full bg-cream" />
           </button>
+          {/* Share button */}
+          <button
+            onClick={() => setShowShare(true)}
+            className="flex flex-col items-center gap-1.5 px-6 py-1 relative active:scale-90 transition-transform"
+          >
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#F5F5F0" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M4 12v8a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-8" />
+              <polyline points="16 6 12 2 8 6" />
+              <line x1="12" y1="2" x2="12" y2="15" />
+            </svg>
+            <span
+              className="text-cream text-[10px]"
+              style={{ fontFamily: "var(--font-sans)", fontWeight: 400, letterSpacing: "0.08em" }}
+            >
+              Share
+            </span>
+          </button>
         </div>
       </div>
+
+      {showShare && canvas && (
+        <ShareModal
+          canvasName={canvas.name}
+          inviteCode={canvas.inviteCode}
+          onClose={() => setShowShare(false)}
+        />
+      )}
     </div>
   );
 }

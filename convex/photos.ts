@@ -9,13 +9,20 @@ export const generateUploadUrl = mutation(async (ctx) => {
 
 export const savePhoto = mutation({
   args: {
-    userName: v.string(),
+    canvasId: v.id("canvases"),
+    displayName: v.string(),
     storageId: v.id("_storage"),
   },
   handler: async (ctx, args) => {
+    // Validate canvas exists
+    const canvas = await ctx.db.get(args.canvasId);
+    if (!canvas) throw new Error("Canvas not found");
+
     const existing = await ctx.db
       .query("photos")
-      .filter((q) => q.eq(q.field("userName"), args.userName))
+      .withIndex("by_canvas_user", (q) =>
+        q.eq("canvasId", args.canvasId).eq("displayName", args.displayName)
+      )
       .collect();
 
     if (existing.length >= MAX_PHOTOS_PER_USER) {
@@ -29,7 +36,8 @@ export const savePhoto = mutation({
     const rotation = Math.random() * 30 - 15;
 
     await ctx.db.insert("photos", {
-      userName: args.userName,
+      canvasId: args.canvasId,
+      displayName: args.displayName,
       storageId: args.storageId,
       timestamp: Date.now(),
       posX,
@@ -40,11 +48,11 @@ export const savePhoto = mutation({
 });
 
 export const getPhotos = query({
-  handler: async (ctx) => {
+  args: { canvasId: v.id("canvases") },
+  handler: async (ctx, args) => {
     const photos = await ctx.db
       .query("photos")
-      .withIndex("by_timestamp")
-      .order("desc")
+      .withIndex("by_canvas", (q) => q.eq("canvasId", args.canvasId))
       .collect();
 
     return await Promise.all(
@@ -79,11 +87,16 @@ export const deletePhoto = mutation({
 });
 
 export const getPhotoCount = query({
-  args: { userName: v.string() },
+  args: {
+    canvasId: v.id("canvases"),
+    displayName: v.string(),
+  },
   handler: async (ctx, args) => {
     const photos = await ctx.db
       .query("photos")
-      .filter((q) => q.eq(q.field("userName"), args.userName))
+      .withIndex("by_canvas_user", (q) =>
+        q.eq("canvasId", args.canvasId).eq("displayName", args.displayName)
+      )
       .collect();
     return photos.length;
   },
