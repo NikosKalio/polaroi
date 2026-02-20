@@ -71,6 +71,18 @@ export const movePhoto = mutation({
     posY: v.number(),
   },
   handler: async (ctx, args) => {
+    const photo = await ctx.db.get(args.id);
+    if (!photo) throw new Error("Photo not found");
+
+    // Only canvas owner can move photos
+    const canvas = await ctx.db.get(photo.canvasId);
+    if (!canvas) throw new Error("Canvas not found");
+
+    const identity = await ctx.auth.getUserIdentity();
+    if (!identity || canvas.ownerId !== identity.tokenIdentifier) {
+      throw new Error("Only the canvas owner can rearrange photos");
+    }
+
     await ctx.db.patch(args.id, { posX: args.posX, posY: args.posY });
   },
 });
@@ -79,10 +91,19 @@ export const deletePhoto = mutation({
   args: { id: v.id("photos") },
   handler: async (ctx, args) => {
     const photo = await ctx.db.get(args.id);
-    if (photo) {
-      await ctx.storage.delete(photo.storageId);
-      await ctx.db.delete(args.id);
+    if (!photo) return;
+
+    // Only canvas owner can delete photos
+    const canvas = await ctx.db.get(photo.canvasId);
+    if (!canvas) throw new Error("Canvas not found");
+
+    const identity = await ctx.auth.getUserIdentity();
+    if (!identity || canvas.ownerId !== identity.tokenIdentifier) {
+      throw new Error("Only the canvas owner can delete photos");
     }
+
+    await ctx.storage.delete(photo.storageId);
+    await ctx.db.delete(args.id);
   },
 });
 

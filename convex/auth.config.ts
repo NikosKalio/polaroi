@@ -1,7 +1,7 @@
 export default {
   providers: [
     {
-      domain: "https://learning-moose-91.clerk.accounts.dev",
+      domain: "https://clerk.polaroidparty.app",
       applicationID: "convex",
     },
   ],
