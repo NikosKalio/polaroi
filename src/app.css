@@ -52,6 +52,11 @@
   50% { box-shadow: 0 0 0 8px rgba(28, 25, 23, 0); }
 }
 
+@keyframes float {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-10px); }
+}
+
 /* Safe area padding for PWA */
 .pb-safe {
   padding-bottom: env(safe-area-inset-bottom, 0px);
