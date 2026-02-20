@@ -10,6 +10,7 @@
 
 import type * as canvases from "../canvases.js";
 import type * as photos from "../photos.js";
+import type * as r2 from "../r2.js";
 
 import type {
   ApiFromModules,
@@ -20,6 +21,7 @@ import type {
 declare const fullApi: ApiFromModules<{
   canvases: typeof canvases;
   photos: typeof photos;
+  r2: typeof r2;
 }>;
 
 /**

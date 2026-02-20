@@ -16,7 +16,8 @@ export default defineSchema({
   photos: defineTable({
     canvasId: v.id("canvases"),
     displayName: v.string(),
-    storageId: v.id("_storage"),
+    storageId: v.optional(v.id("_storage")),
+    r2Key: v.optional(v.string()),
     timestamp: v.number(),
     posX: v.number(),
     posY: v.number(),

@@ -1,8 +1,7 @@
 import { useState, useRef, useCallback, useEffect } from "react";
 import { useNavigate, useParams } from "react-router-dom";
-import { useMutation, useQuery } from "convex/react";
+import { useAction, useMutation, useQuery } from "convex/react";
 import { api } from "../../convex/_generated/api";
-import type { Id } from "../../convex/_generated/dataModel";
 import { startCamera, stopCamera, captureFrame, triggerHaptic, flashTorch } from "../lib/camera";
 import PhotoPreview from "../components/PhotoPreview";
 import Header from "../components/Header";
@@ -35,7 +34,7 @@ export default function Camera() {
   const [flash, setFlash] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const generateUploadUrl = useMutation(api.photos.generateUploadUrl);
+  const generateR2UploadUrl = useAction(api.r2.generateR2UploadUrl);
   const savePhoto = useMutation(api.photos.savePhoto);
   const count = useQuery(
     api.photos.getPhotoCount,
@@ -85,14 +84,15 @@ export default function Camera() {
     if (!preview || !displayName || !canvas) return;
     setSaving(true);
     try {
-      const uploadUrl = await generateUploadUrl();
-      const result = await fetch(uploadUrl, {
-        method: "POST",
+      const { uploadUrl, key } = await generateR2UploadUrl({
+        canvasId: canvas._id,
+      });
+      await fetch(uploadUrl, {
+        method: "PUT",
         headers: { "Content-Type": "image/jpeg" },
         body: preview.blob,
       });
-      const { storageId } = (await result.json()) as { storageId: Id<"_storage"> };
-      await savePhoto({ canvasId: canvas._id, displayName, storageId });
+      await savePhoto({ canvasId: canvas._id, displayName, r2Key: key });
       URL.revokeObjectURL(preview.url);
       setPreview(null);
       navigate(`/c/${slug}/canvas`);

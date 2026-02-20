@@ -1,19 +1,21 @@
 import { v } from "convex/values";
 import { mutation, query } from "./_generated/server";
+import { internal } from "./_generated/api";
 
 const MAX_PHOTOS_PER_USER = 30;
-
-export const generateUploadUrl = mutation(async (ctx) => {
-  return await ctx.storage.generateUploadUrl();
-});
 
 export const savePhoto = mutation({
   args: {
     canvasId: v.id("canvases"),
     displayName: v.string(),
-    storageId: v.id("_storage"),
+    storageId: v.optional(v.id("_storage")),
+    r2Key: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
+    if (!args.storageId && !args.r2Key) {
+      throw new Error("Either storageId or r2Key is required");
+    }
+
     // Validate canvas exists
     const canvas = await ctx.db.get(args.canvasId);
     if (!canvas) throw new Error("Canvas not found");
@@ -39,6 +41,7 @@ export const savePhoto = mutation({
       canvasId: args.canvasId,
       displayName: args.displayName,
       storageId: args.storageId,
+      r2Key: args.r2Key,
       timestamp: Date.now(),
       posX,
       posY,
@@ -55,10 +58,16 @@ export const getPhotos = query({
       .withIndex("by_canvas", (q) => q.eq("canvasId", args.canvasId))
       .collect();
 
+    const r2PublicUrl = process.env.R2_PUBLIC_URL;
+
     return await Promise.all(
       photos.map(async (photo) => ({
         ...photo,
-        url: await ctx.storage.getUrl(photo.storageId),
+        url: photo.r2Key
+          ? `${r2PublicUrl}/${photo.r2Key}`
+          : photo.storageId
+            ? await ctx.storage.getUrl(photo.storageId!)
+            : null,
       }))
     );
   },
@@ -102,7 +111,13 @@ export const deletePhoto = mutation({
       throw new Error("Only the canvas owner can delete photos");
     }
 
-    await ctx.storage.delete(photo.storageId);
+    if (photo.r2Key) {
+      await ctx.scheduler.runAfter(0, internal.r2.deleteR2Object, {
+        key: photo.r2Key,
+      });
+    } else if (photo.storageId) {
+      await ctx.storage.delete(photo.storageId!);
+    }
     await ctx.db.delete(args.id);
   },
 });

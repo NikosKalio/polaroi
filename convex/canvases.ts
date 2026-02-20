@@ -1,5 +1,6 @@
 import { v } from "convex/values";
 import { mutation, query } from "./_generated/server";
+import { internal } from "./_generated/api";
 import { nanoid } from "nanoid";
 
 function generateSlug(name: string): string {
@@ -84,9 +85,20 @@ export const deleteCanvas = mutation({
       .withIndex("by_canvas", (q) => q.eq("canvasId", args.id))
       .collect();
 
+    const r2Keys: string[] = [];
     for (const photo of photos) {
-      await ctx.storage.delete(photo.storageId);
+      if (photo.r2Key) {
+        r2Keys.push(photo.r2Key);
+      } else if (photo.storageId) {
+        await ctx.storage.delete(photo.storageId!);
+      }
       await ctx.db.delete(photo._id);
+    }
+
+    if (r2Keys.length > 0) {
+      await ctx.scheduler.runAfter(0, internal.r2.deleteR2Objects, {
+        keys: r2Keys,
+      });
     }
 
     await ctx.db.delete(args.id);
