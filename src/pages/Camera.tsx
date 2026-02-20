@@ -55,19 +55,20 @@ export default function Camera() {
   }, []);
 
   useEffect(() => {
+    if (!canvas || !displayName) return;
     initCamera(facingMode);
     return () => {
       if (streamRef.current) stopCamera(streamRef.current);
     };
-  }, [facingMode, initCamera]);
+  }, [facingMode, initCamera, canvas, displayName]);
 
   async function handleCapture() {
     if (!videoRef.current || remaining === 0) return;
     triggerHaptic();
     setFlash(true);
-    setTimeout(() => setFlash(false), 300);
+    setTimeout(() => setFlash(false), 600);
     if (facingMode === "environment" && streamRef.current) {
-      flashTorch(streamRef.current, 300);
+      flashTorch(streamRef.current, 600);
     }
 
     try {
