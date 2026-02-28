@@ -32,6 +32,7 @@ export default function Camera() {
   const [preview, setPreview] = useState<{ blob: Blob; url: string } | null>(null);
   const [saving, setSaving] = useState(false);
   const [flash, setFlash] = useState(false);
+  const [flashEnabled, setFlashEnabled] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const generateR2UploadUrl = useAction(api.r2.generateR2UploadUrl);
@@ -65,10 +66,12 @@ export default function Camera() {
   async function handleCapture() {
     if (!videoRef.current || remaining === 0) return;
     triggerHaptic();
-    setFlash(true);
-    setTimeout(() => setFlash(false), 600);
-    if (facingMode === "environment" && streamRef.current) {
-      flashTorch(streamRef.current, 600);
+    if (flashEnabled) {
+      setFlash(true);
+      setTimeout(() => setFlash(false), 600);
+      if (facingMode === "environment" && streamRef.current) {
+        flashTorch(streamRef.current, 600);
+      }
     }
 
     try {
@@ -142,6 +145,26 @@ export default function Camera() {
 
         {flash && (
           <div className="absolute inset-0 bg-white animate-flash pointer-events-none" style={{ zIndex: 50 }} />
+        )}
+
+        {/* Flash toggle */}
+        {!error && (
+          <button
+            onClick={() => setFlashEnabled((prev) => !prev)}
+            className="absolute top-3 right-3 w-9 h-9 flex items-center justify-center rounded-full"
+            style={{ zIndex: 10, background: flashEnabled ? "rgba(255,255,255,0.25)" : "rgba(0,0,0,0.3)" }}
+          >
+            {flashEnabled ? (
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="#F5F5F0" stroke="#F5F5F0" strokeWidth="1" strokeLinecap="round" strokeLinejoin="round">
+                <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2" />
+              </svg>
+            ) : (
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#F5F5F0" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round">
+                <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2" />
+                <line x1="3" y1="3" x2="21" y2="21" />
+              </svg>
+            )}
+          </button>
         )}
       </div>
 
