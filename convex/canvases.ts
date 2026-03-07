@@ -28,7 +28,7 @@ export const createCanvas = mutation({
       ownerId: identity.tokenIdentifier,
       inviteCode,
       createdAt: Date.now(),
-      photoLimit: args.photoLimit ?? 10,
+      photoLimit: args.photoLimit ?? 30,
     });
 
     return { id, slug, inviteCode };

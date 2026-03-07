@@ -2,7 +2,7 @@ import { v } from "convex/values";
 import { mutation, query } from "./_generated/server";
 import { internal } from "./_generated/api";
 
-const DEFAULT_PHOTO_LIMIT = 10;
+const DEFAULT_PHOTO_LIMIT = 30;
 
 export const savePhoto = mutation({
   args: {
@@ -154,7 +154,7 @@ export const getEffectiveLimit = query({
   },
   handler: async (ctx, args) => {
     const canvas = await ctx.db.get(args.canvasId);
-    if (!canvas) return 10;
+    if (!canvas) return DEFAULT_PHOTO_LIMIT;
     const baseLimit = canvas.photoLimit ?? DEFAULT_PHOTO_LIMIT;
     const bonus = await ctx.db
       .query("bonusPhotos")

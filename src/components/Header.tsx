@@ -13,7 +13,7 @@ interface HeaderProps {
 export default function Header({ displayName, canvasId, canvasName, effectiveLimit }: HeaderProps) {
   const navigate = useNavigate();
   const count = useQuery(api.photos.getPhotoCount, { canvasId, displayName });
-  const limit = effectiveLimit ?? 10;
+  const limit = effectiveLimit ?? 30;
   const remaining = count !== undefined ? limit - count : null;
 
   return (

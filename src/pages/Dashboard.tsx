@@ -165,7 +165,7 @@ export default function Dashboard() {
   const [showCreate, setShowCreate] = useState(false);
   const [newName, setNewName] = useState("");
   const [creating, setCreating] = useState(false);
-  const [photoLimit, setPhotoLimit] = useState(10);
+  const [photoLimit, setPhotoLimit] = useState(30);
   const [shareCanvas, setShareCanvas] = useState<{
     name: string;
     inviteCode: string;
@@ -180,7 +180,7 @@ export default function Dashboard() {
     try {
       const result = await createCanvas({ name: trimmed, photoLimit });
       setNewName("");
-      setPhotoLimit(10);
+      setPhotoLimit(30);
       setShowCreate(false);
       navigate(`/c/${result.slug}/canvas`);
     } catch (err) {
