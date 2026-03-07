@@ -5,15 +5,38 @@ export async function startCamera(
   videoElement: HTMLVideoElement,
   facingMode: "user" | "environment" = "environment"
 ): Promise<MediaStream> {
-  const stream = await navigator.mediaDevices.getUserMedia({
-    video: {
-      facingMode,
-      width: { ideal: 1920 },
-      height: { ideal: 1080 },
-    },
-    audio: false,
-  });
+  let stream: MediaStream;
+  try {
+    // Try exact facingMode first — prevents wrong camera on some Android devices
+    stream = await navigator.mediaDevices.getUserMedia({
+      video: {
+        facingMode: { exact: facingMode },
+        width: { ideal: 1920 },
+        height: { ideal: 1080 },
+      },
+      audio: false,
+    });
+  } catch {
+    // Fallback to ideal (single-camera devices, or if exact fails)
+    stream = await navigator.mediaDevices.getUserMedia({
+      video: {
+        facingMode: { ideal: facingMode },
+        width: { ideal: 1920 },
+        height: { ideal: 1080 },
+      },
+      audio: false,
+    });
+  }
   videoElement.srcObject = stream;
+
+  // Wait for actual frames before resolving — fixes black screen on iOS
+  await new Promise<void>((resolve) => {
+    if (videoElement.readyState >= 2) {
+      resolve();
+    } else {
+      videoElement.addEventListener("loadeddata", () => resolve(), { once: true });
+    }
+  });
   await videoElement.play();
   return stream;
 }
