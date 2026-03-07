@@ -8,6 +8,7 @@ export default defineSchema({
     ownerId: v.string(),
     inviteCode: v.string(),
     createdAt: v.number(),
+    photoLimit: v.optional(v.number()),
   })
     .index("by_slug", ["slug"])
     .index("by_owner", ["ownerId"])
@@ -25,4 +26,10 @@ export default defineSchema({
   })
     .index("by_canvas", ["canvasId"])
     .index("by_canvas_user", ["canvasId", "displayName"]),
+
+  bonusPhotos: defineTable({
+    canvasId: v.id("canvases"),
+    displayName: v.string(),
+    extra: v.number(),
+  }).index("by_canvas_user", ["canvasId", "displayName"]),
 });

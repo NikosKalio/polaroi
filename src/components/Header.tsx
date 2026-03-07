@@ -7,12 +7,14 @@ interface HeaderProps {
   displayName: string;
   canvasId: Id<"canvases">;
   canvasName?: string;
+  effectiveLimit?: number;
 }
 
-export default function Header({ displayName, canvasId, canvasName }: HeaderProps) {
+export default function Header({ displayName, canvasId, canvasName, effectiveLimit }: HeaderProps) {
   const navigate = useNavigate();
   const count = useQuery(api.photos.getPhotoCount, { canvasId, displayName });
-  const remaining = count !== undefined ? 30 - count : null;
+  const limit = effectiveLimit ?? 10;
+  const remaining = count !== undefined ? limit - count : null;
 
   return (
     <header className="fixed top-0 left-0 right-0 z-40 bg-cream/90 backdrop-blur-md">
@@ -48,7 +50,7 @@ export default function Header({ displayName, canvasId, canvasName }: HeaderProp
             className="text-stone text-xs tabular-nums shrink-0 ml-2"
             style={{ fontFamily: "var(--font-sans)", fontWeight: 400, letterSpacing: "0.05em" }}
           >
-            {remaining} / 30
+            {remaining} / {limit}
           </span>
         )}
       </div>

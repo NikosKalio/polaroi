@@ -165,6 +165,7 @@ export default function Dashboard() {
   const [showCreate, setShowCreate] = useState(false);
   const [newName, setNewName] = useState("");
   const [creating, setCreating] = useState(false);
+  const [photoLimit, setPhotoLimit] = useState(10);
   const [shareCanvas, setShareCanvas] = useState<{
     name: string;
     inviteCode: string;
@@ -177,8 +178,9 @@ export default function Dashboard() {
     if (!trimmed) return;
     setCreating(true);
     try {
-      const result = await createCanvas({ name: trimmed });
+      const result = await createCanvas({ name: trimmed, photoLimit });
       setNewName("");
+      setPhotoLimit(10);
       setShowCreate(false);
       navigate(`/c/${result.slug}/canvas`);
     } catch (err) {
@@ -388,6 +390,75 @@ export default function Dashboard() {
                   boxSizing: "border-box",
                 }}
               />
+              <div style={{ marginTop: "16px" }}>
+                <label
+                  style={{
+                    display: "block",
+                    fontFamily: "var(--font-sans)",
+                    fontWeight: 400,
+                    fontSize: "0.75rem",
+                    color: "var(--color-stone)",
+                    marginBottom: "8px",
+                    letterSpacing: "0.05em",
+                  }}
+                >
+                  Photos per person
+                </label>
+                <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
+                  <button
+                    type="button"
+                    onClick={() => setPhotoLimit((p) => Math.max(1, p - 5))}
+                    style={{
+                      width: "36px",
+                      height: "36px",
+                      borderRadius: "8px",
+                      border: "1px solid var(--color-stone-faint)",
+                      background: "#fff",
+                      fontFamily: "var(--font-sans)",
+                      fontSize: "1rem",
+                      color: "var(--color-ink)",
+                      cursor: "pointer",
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                    }}
+                  >
+                    -
+                  </button>
+                  <span
+                    style={{
+                      fontFamily: "var(--font-sans)",
+                      fontWeight: 400,
+                      fontSize: "1.125rem",
+                      color: "var(--color-ink)",
+                      minWidth: "32px",
+                      textAlign: "center",
+                    }}
+                  >
+                    {photoLimit}
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => setPhotoLimit((p) => p + 5)}
+                    style={{
+                      width: "36px",
+                      height: "36px",
+                      borderRadius: "8px",
+                      border: "1px solid var(--color-stone-faint)",
+                      background: "#fff",
+                      fontFamily: "var(--font-sans)",
+                      fontSize: "1rem",
+                      color: "var(--color-ink)",
+                      cursor: "pointer",
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                    }}
+                  >
+                    +
+                  </button>
+                </div>
+              </div>
               <div style={{ display: "flex", gap: "12px", marginTop: "20px" }}>
                 <button
                   type="button"

@@ -2,7 +2,7 @@ import { useState, useRef, useCallback, useEffect } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { useAction, useMutation, useQuery } from "convex/react";
 import { api } from "../../convex/_generated/api";
-import { startCamera, stopCamera, captureFrame, triggerHaptic, flashTorch } from "../lib/camera";
+import { startCamera, stopCamera, captureFrame, triggerHaptic, flashTorch, resizeImageFile } from "../lib/camera";
 import PhotoPreview from "../components/PhotoPreview";
 import Header from "../components/Header";
 
@@ -27,6 +27,7 @@ export default function Camera() {
 
   const videoRef = useRef<HTMLVideoElement>(null);
   const streamRef = useRef<MediaStream | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   const [facingMode, setFacingMode] = useState<"user" | "environment">("environment");
   const [preview, setPreview] = useState<{ blob: Blob; url: string } | null>(null);
@@ -34,14 +35,32 @@ export default function Camera() {
   const [flash, setFlash] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  const [flashEnabled, setFlashEnabled] = useState(
+    () => localStorage.getItem("polaroid-flash-pref") === "on"
+  );
+
+  function toggleFlash() {
+    setFlashEnabled((prev) => {
+      const next = !prev;
+      localStorage.setItem("polaroid-flash-pref", next ? "on" : "off");
+      return next;
+    });
+  }
+
   const generateR2UploadUrl = useAction(api.r2.generateR2UploadUrl);
   const savePhoto = useMutation(api.photos.savePhoto);
   const count = useQuery(
     api.photos.getPhotoCount,
     canvas && displayName ? { canvasId: canvas._id, displayName } : "skip"
   );
+  const effectiveLimit = useQuery(
+    api.photos.getEffectiveLimit,
+    canvas && displayName ? { canvasId: canvas._id, displayName } : "skip"
+  );
 
-  const remaining = count !== undefined ? 30 - count : null;
+  const remaining = count !== undefined && effectiveLimit !== undefined
+    ? effectiveLimit - count
+    : null;
 
   const initCamera = useCallback(async (facing: "user" | "environment") => {
     if (!videoRef.current) return;
@@ -65,10 +84,12 @@ export default function Camera() {
   async function handleCapture() {
     if (!videoRef.current || remaining === 0) return;
     triggerHaptic();
-    setFlash(true);
-    setTimeout(() => setFlash(false), 600);
-    if (facingMode === "environment" && streamRef.current) {
-      flashTorch(streamRef.current, 600);
+    if (flashEnabled) {
+      setFlash(true);
+      setTimeout(() => setFlash(false), 600);
+      if (facingMode === "environment" && streamRef.current) {
+        flashTorch(streamRef.current, 600);
+      }
     }
 
     try {
@@ -111,6 +132,20 @@ export default function Camera() {
     }
   }
 
+  async function handleFileSelect(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    try {
+      const blob = await resizeImageFile(file);
+      const url = URL.createObjectURL(blob);
+      setPreview({ blob, url });
+    } catch {
+      setError("Could not load that image. Try another.");
+      setTimeout(() => setError(null), 2000);
+    }
+    e.target.value = "";
+  }
+
   function toggleCamera() {
     setFacingMode((prev) => (prev === "user" ? "environment" : "user"));
   }
@@ -119,7 +154,7 @@ export default function Camera() {
 
   return (
     <div className="fixed inset-0 bg-ink flex flex-col">
-      <Header displayName={displayName} canvasId={canvas._id} canvasName={canvas.name} />
+      <Header displayName={displayName} canvasId={canvas._id} canvasName={canvas.name} effectiveLimit={effectiveLimit ?? undefined} />
 
       {/* Camera viewfinder */}
       <div className="absolute inset-0 top-[52px] bottom-[100px] z-0">
@@ -161,6 +196,18 @@ export default function Camera() {
             </svg>
           </button>
 
+          {/* Upload */}
+          <button
+            onClick={() => fileInputRef.current?.click()}
+            className="w-10 h-10 flex items-center justify-center"
+          >
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#F5F5F0" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round">
+              <rect x="3" y="3" width="18" height="18" rx="2" />
+              <circle cx="8.5" cy="8.5" r="1.5" />
+              <path d="M21 15l-5-5L5 21" />
+            </svg>
+          </button>
+
           {/* Shutter */}
           <button
             onClick={handleCapture}
@@ -169,6 +216,18 @@ export default function Camera() {
           >
             <div className="absolute inset-0 rounded-full border-[2px] border-cream/30 group-active:border-cream/60 transition-colors" />
             <div className="w-[54px] h-[54px] rounded-full bg-cream group-active:scale-90 transition-transform duration-150" />
+          </button>
+
+          {/* Flash toggle */}
+          <button
+            onClick={toggleFlash}
+            className="w-10 h-10 flex items-center justify-center"
+            style={{ opacity: flashEnabled ? 1 : 0.4 }}
+          >
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#F5F5F0" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round">
+              <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2" />
+              {!flashEnabled && <line x1="4" y1="4" x2="20" y2="20" strokeWidth="1.5" />}
+            </svg>
           </button>
 
           {/* Flip */}
@@ -200,7 +259,7 @@ export default function Camera() {
             className="text-center text-xs pb-2 opacity-50"
             style={{ fontFamily: "var(--font-sans)", color: "var(--color-cream)", fontWeight: 300 }}
           >
-            All 30 photos used
+            All {effectiveLimit} photos used
           </p>
         )}
       </div>
@@ -213,6 +272,14 @@ export default function Camera() {
           saving={saving}
         />
       )}
+
+      <input
+        ref={fileInputRef}
+        type="file"
+        accept="image/*"
+        className="hidden"
+        onChange={handleFileSelect}
+      />
     </div>
   );
 }

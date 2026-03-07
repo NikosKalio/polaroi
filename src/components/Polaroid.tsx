@@ -5,6 +5,7 @@ interface PolaroidProps {
   rotation?: number;
   style?: React.CSSProperties;
   className?: string;
+  onUserClick?: (userName: string) => void;
 }
 
 function formatTime(ts: number): string {
@@ -21,6 +22,7 @@ export default function Polaroid({
   rotation = 0,
   style,
   className = "",
+  onUserClick,
 }: PolaroidProps) {
   return (
     <div
@@ -40,7 +42,17 @@ export default function Polaroid({
       <div className="pt-1.5 text-center">
         <p
           className="text-ink text-base leading-tight"
-          style={{ fontFamily: "var(--font-hand)", fontWeight: 600 }}
+          style={{
+            fontFamily: "var(--font-hand)",
+            fontWeight: 600,
+            cursor: onUserClick ? "pointer" : "default",
+          }}
+          onClick={(e) => {
+            if (onUserClick) {
+              e.stopPropagation();
+              onUserClick(userName);
+            }
+          }}
         >
           {userName}
         </p>

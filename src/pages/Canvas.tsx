@@ -29,8 +29,32 @@ export default function Canvas() {
     canvas ? { canvasId: canvas._id } : "skip"
   );
   const movePhoto = useMutation(api.photos.movePhoto);
+  const effectiveLimit = useQuery(
+    api.photos.getEffectiveLimit,
+    canvas && displayName ? { canvasId: canvas._id, displayName } : "skip"
+  );
+
+  const isOwner = useQuery(api.canvases.isCanvasOwner, canvas ? { canvasId: canvas._id } : "skip");
+  const grantBonus = useMutation(api.photos.grantBonusPhotos);
 
   const [showShare, setShowShare] = useState(false);
+  const [bonusTarget, setBonusTarget] = useState<string | null>(null);
+  const [bonusAmount, setBonusAmount] = useState(5);
+  const [granting, setGranting] = useState(false);
+
+  async function handleGrantBonus() {
+    if (!bonusTarget || !canvas) return;
+    setGranting(true);
+    try {
+      await grantBonus({ canvasId: canvas._id, displayName: bonusTarget, extra: bonusAmount });
+      setBonusTarget(null);
+      setBonusAmount(5);
+    } catch (err) {
+      alert(err instanceof Error ? err.message : "Failed to grant bonus");
+    } finally {
+      setGranting(false);
+    }
+  }
 
   const scrollAreaRef = useRef<HTMLDivElement>(null);
   const [transform, setTransform] = useState({ x: 0, y: 0, scale: 1 });
@@ -222,7 +246,7 @@ export default function Canvas() {
 
   return (
     <div className="min-h-dvh bg-warm-white bg-grain flex flex-col">
-      <Header displayName={displayName} canvasId={canvas._id} canvasName={canvas.name} />
+      <Header displayName={displayName} canvasId={canvas._id} canvasName={canvas.name} effectiveLimit={effectiveLimit ?? undefined} />
 
       <div
         ref={scrollAreaRef}
@@ -288,6 +312,7 @@ export default function Canvas() {
                   userName={photo.displayName}
                   timestamp={photo.timestamp}
                   rotation={photo.rotation}
+                  onUserClick={isOwner ? (name) => setBonusTarget(name) : undefined}
                 />
               </div>
             ) : null
@@ -354,6 +379,147 @@ export default function Canvas() {
           inviteCode={canvas.inviteCode}
           onClose={() => setShowShare(false)}
         />
+      )}
+
+      {bonusTarget && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center backdrop-blur-sm"
+          style={{ background: "rgba(28,25,23,0.7)" }}
+          onClick={() => setBonusTarget(null)}
+        >
+          <div
+            className="animate-settle"
+            style={{
+              background: "var(--color-cream)",
+              borderRadius: "16px",
+              padding: "24px",
+              margin: "0 24px",
+              maxWidth: "320px",
+              width: "100%",
+              boxShadow: "0 20px 60px rgba(28,25,23,0.2)",
+            }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <h3
+              style={{
+                fontFamily: "var(--font-serif)",
+                fontWeight: 400,
+                fontSize: "1.125rem",
+                color: "var(--color-ink)",
+                textAlign: "center",
+                margin: "0 0 4px 0",
+              }}
+            >
+              {bonusTarget}
+            </h3>
+            <p
+              style={{
+                fontFamily: "var(--font-sans)",
+                fontWeight: 300,
+                fontSize: "0.8125rem",
+                color: "var(--color-stone)",
+                textAlign: "center",
+                margin: "0 0 20px 0",
+              }}
+            >
+              Grant extra photos
+            </p>
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: "12px", marginBottom: "20px" }}>
+              <button
+                type="button"
+                onClick={() => setBonusAmount((p) => Math.max(1, p - 1))}
+                style={{
+                  width: "36px",
+                  height: "36px",
+                  borderRadius: "8px",
+                  border: "1px solid var(--color-stone-faint)",
+                  background: "#fff",
+                  fontFamily: "var(--font-sans)",
+                  fontSize: "1rem",
+                  color: "var(--color-ink)",
+                  cursor: "pointer",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                }}
+              >
+                -
+              </button>
+              <span
+                style={{
+                  fontFamily: "var(--font-sans)",
+                  fontWeight: 400,
+                  fontSize: "1.25rem",
+                  color: "var(--color-ink)",
+                  minWidth: "32px",
+                  textAlign: "center",
+                }}
+              >
+                +{bonusAmount}
+              </span>
+              <button
+                type="button"
+                onClick={() => setBonusAmount((p) => p + 1)}
+                style={{
+                  width: "36px",
+                  height: "36px",
+                  borderRadius: "8px",
+                  border: "1px solid var(--color-stone-faint)",
+                  background: "#fff",
+                  fontFamily: "var(--font-sans)",
+                  fontSize: "1rem",
+                  color: "var(--color-ink)",
+                  cursor: "pointer",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                }}
+              >
+                +
+              </button>
+            </div>
+            <div style={{ display: "flex", gap: "12px" }}>
+              <button
+                onClick={() => setBonusTarget(null)}
+                style={{
+                  flex: 1,
+                  height: "44px",
+                  borderRadius: "8px",
+                  border: "none",
+                  background: "transparent",
+                  fontFamily: "var(--font-sans)",
+                  fontWeight: 400,
+                  fontSize: "0.875rem",
+                  color: "var(--color-stone)",
+                  cursor: "pointer",
+                }}
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleGrantBonus}
+                disabled={granting}
+                style={{
+                  flex: 1,
+                  height: "44px",
+                  borderRadius: "8px",
+                  border: "none",
+                  background: "var(--color-ink)",
+                  color: "var(--color-cream)",
+                  fontFamily: "var(--font-sans)",
+                  fontWeight: 500,
+                  fontSize: "0.75rem",
+                  letterSpacing: "0.1em",
+                  textTransform: "uppercase" as const,
+                  cursor: granting ? "default" : "pointer",
+                  opacity: granting ? 0.4 : 1,
+                }}
+              >
+                {granting ? "Granting..." : "Grant"}
+              </button>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );

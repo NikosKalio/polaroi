@@ -2,7 +2,7 @@ import { v } from "convex/values";
 import { mutation, query } from "./_generated/server";
 import { internal } from "./_generated/api";
 
-const MAX_PHOTOS_PER_USER = 30;
+const DEFAULT_PHOTO_LIMIT = 10;
 
 export const savePhoto = mutation({
   args: {
@@ -20,6 +20,15 @@ export const savePhoto = mutation({
     const canvas = await ctx.db.get(args.canvasId);
     if (!canvas) throw new Error("Canvas not found");
 
+    const baseLimit = canvas.photoLimit ?? DEFAULT_PHOTO_LIMIT;
+    const bonus = await ctx.db
+      .query("bonusPhotos")
+      .withIndex("by_canvas_user", (q) =>
+        q.eq("canvasId", args.canvasId).eq("displayName", args.displayName)
+      )
+      .unique();
+    const effectiveLimit = baseLimit + (bonus?.extra ?? 0);
+
     const existing = await ctx.db
       .query("photos")
       .withIndex("by_canvas_user", (q) =>
@@ -27,9 +36,9 @@ export const savePhoto = mutation({
       )
       .collect();
 
-    if (existing.length >= MAX_PHOTOS_PER_USER) {
+    if (existing.length >= effectiveLimit) {
       throw new Error(
-        `Photo limit reached! Each person can take up to ${MAX_PHOTOS_PER_USER} photos.`
+        `Photo limit reached! You can take up to ${effectiveLimit} photos.`
       );
     }
 
@@ -135,5 +144,60 @@ export const getPhotoCount = query({
       )
       .collect();
     return photos.length;
+  },
+});
+
+export const getEffectiveLimit = query({
+  args: {
+    canvasId: v.id("canvases"),
+    displayName: v.string(),
+  },
+  handler: async (ctx, args) => {
+    const canvas = await ctx.db.get(args.canvasId);
+    if (!canvas) return 10;
+    const baseLimit = canvas.photoLimit ?? DEFAULT_PHOTO_LIMIT;
+    const bonus = await ctx.db
+      .query("bonusPhotos")
+      .withIndex("by_canvas_user", (q) =>
+        q.eq("canvasId", args.canvasId).eq("displayName", args.displayName)
+      )
+      .unique();
+    return baseLimit + (bonus?.extra ?? 0);
+  },
+});
+
+export const grantBonusPhotos = mutation({
+  args: {
+    canvasId: v.id("canvases"),
+    displayName: v.string(),
+    extra: v.number(),
+  },
+  handler: async (ctx, args) => {
+    const canvas = await ctx.db.get(args.canvasId);
+    if (!canvas) throw new Error("Canvas not found");
+
+    const identity = await ctx.auth.getUserIdentity();
+    if (!identity || canvas.ownerId !== identity.tokenIdentifier) {
+      throw new Error("Only the canvas owner can grant bonus photos");
+    }
+
+    const existing = await ctx.db
+      .query("bonusPhotos")
+      .withIndex("by_canvas_user", (q) =>
+        q.eq("canvasId", args.canvasId).eq("displayName", args.displayName)
+      )
+      .unique();
+
+    if (existing) {
+      await ctx.db.patch(existing._id, {
+        extra: existing.extra + args.extra,
+      });
+    } else {
+      await ctx.db.insert("bonusPhotos", {
+        canvasId: args.canvasId,
+        displayName: args.displayName,
+        extra: args.extra,
+      });
+    }
   },
 });

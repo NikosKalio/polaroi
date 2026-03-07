@@ -14,7 +14,7 @@ function generateSlug(name: string): string {
 }
 
 export const createCanvas = mutation({
-  args: { name: v.string() },
+  args: { name: v.string(), photoLimit: v.optional(v.number()) },
   handler: async (ctx, args) => {
     const identity = await ctx.auth.getUserIdentity();
     if (!identity) throw new Error("Not authenticated");
@@ -28,6 +28,7 @@ export const createCanvas = mutation({
       ownerId: identity.tokenIdentifier,
       inviteCode,
       createdAt: Date.now(),
+      photoLimit: args.photoLimit ?? 10,
     });
 
     return { id, slug, inviteCode };
@@ -113,5 +114,16 @@ export const getCanvasPhotoCount = query({
       .withIndex("by_canvas", (q) => q.eq("canvasId", args.canvasId))
       .collect();
     return photos.length;
+  },
+});
+
+export const isCanvasOwner = query({
+  args: { canvasId: v.id("canvases") },
+  handler: async (ctx, args) => {
+    const canvas = await ctx.db.get(args.canvasId);
+    if (!canvas) return false;
+    const identity = await ctx.auth.getUserIdentity();
+    if (!identity) return false;
+    return canvas.ownerId === identity.tokenIdentifier;
   },
 });
