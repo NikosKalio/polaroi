@@ -5,25 +5,22 @@ export async function startCamera(
   videoElement: HTMLVideoElement,
   facingMode: "user" | "environment" = "environment"
 ): Promise<MediaStream> {
+  // Only request high resolution for rear camera — front camera crops/zooms to hit 1080p
+  const resConstraints = facingMode === "environment"
+    ? { width: { ideal: 1920 }, height: { ideal: 1080 } }
+    : {};
+
   let stream: MediaStream;
   try {
     // Try exact facingMode first — prevents wrong camera on some Android devices
     stream = await navigator.mediaDevices.getUserMedia({
-      video: {
-        facingMode: { exact: facingMode },
-        width: { ideal: 1920 },
-        height: { ideal: 1080 },
-      },
+      video: { facingMode: { exact: facingMode }, ...resConstraints },
       audio: false,
     });
   } catch {
     // Fallback to ideal (single-camera devices, or if exact fails)
     stream = await navigator.mediaDevices.getUserMedia({
-      video: {
-        facingMode: { ideal: facingMode },
-        width: { ideal: 1920 },
-        height: { ideal: 1080 },
-      },
+      video: { facingMode: { ideal: facingMode }, ...resConstraints },
       audio: false,
     });
   }
